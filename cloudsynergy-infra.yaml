@@ -1,0 +1,149 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CloudSynergy Core Infrastructure
+  - VPC with Public & Private Subnets
+  - Internet Gateway
+  - Route Table
+  - EC2 Instance (Public Subnet)
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 KeyPair for SSH access
+
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+    Description: EC2 instance type
+
+Resources:
+
+  # -------------------------
+  # VPC
+  # -------------------------
+  CloudSynergyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-VPC
+
+  # -------------------------
+  # Internet Gateway
+  # -------------------------
+  CloudSynergyIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-IGW
+
+  AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CloudSynergyVPC
+      InternetGatewayId: !Ref CloudSynergyIGW
+
+  # -------------------------
+  # Public Subnet
+  # -------------------------
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudSynergyVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-Public-Subnet
+
+  # -------------------------
+  # Private Subnet
+  # -------------------------
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CloudSynergyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-Private-Subnet
+
+  # -------------------------
+  # Route Table (Public)
+  # -------------------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CloudSynergyVPC
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-Public-RT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachIGW
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref CloudSynergyIGW
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # -------------------------
+  # Security Group
+  # -------------------------
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and HTTP
+      VpcId: !Ref CloudSynergyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-Web-SG
+
+  # -------------------------
+  # EC2 Instance
+  # -------------------------
+  CloudSynergyEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
+      ImageId: ami-0f5ee92e2d63afc18   # Ubuntu 22.04 (ap-south-1)
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-EC2
+
+Outputs:
+  VPCId:
+    Description: CloudSynergy VPC ID
+    Value: !Ref CloudSynergyVPC
+
+  EC2PublicIP:
+    Description: Public IP of EC2 Instance
+    Value: !GetAtt CloudSynergyEC2.PublicIp
