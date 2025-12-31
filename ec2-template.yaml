@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudSynergy EC2 Instance for SynergyCRM
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t2.micro
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 Key Pair
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+
+Resources:
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and HTTP
+      VpcId: !ImportValue CloudSynergy-VPC-ID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-EC2-SG
+
+  CloudSynergyEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      ImageId: !Ref LatestAmiId
+      SubnetId: !ImportValue CloudSynergy-Public-Subnet-ID
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      IamInstanceProfile: CloudSynergy-EC2-InstanceProfile
+      Tags:
+        - Key: Name
+          Value: CloudSynergy-SynergyCRM-EC2
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          apt update -y
+          apt install nginx -y
+          systemctl start nginx
+          systemctl enable nginx
+          echo "<h1>CloudSynergy SynergyCRM EC2 Running</h1>" > /var/www/html/index.html
+
+Outputs:
+  EC2PublicIP:
+    Description: Public IP of CloudSynergy EC2
+    Value: !GetAtt CloudSynergyEC2.PublicIp
