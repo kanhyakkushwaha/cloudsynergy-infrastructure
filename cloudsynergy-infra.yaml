@@ -5,15 +5,12 @@ Description: >
   - Internet Gateway
   - Route Table
   - EC2 Instance (Public Subnet)
+  - Pipeline-safe & production-ready
 
 Parameters:
-  KeyPairName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: Existing EC2 KeyPair for SSH access
-
   InstanceType:
     Type: String
-    Default: t2.micro
+    Default: t3.micro
     AllowedValues:
       - t2.micro
       - t3.micro
@@ -78,15 +75,12 @@ Resources:
           Value: CloudSynergy-Private-Subnet
 
   # -------------------------
-  # Route Table (Public)
+  # Route Table
   # -------------------------
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref CloudSynergyVPC
-      Tags:
-        - Key: Name
-          Value: CloudSynergy-Public-RT
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -103,18 +97,14 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
 
   # -------------------------
-  # Security Group
+  # Security Group (NO SSH)
   # -------------------------
   WebSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow SSH and HTTP
+      GroupDescription: Allow HTTP only
       VpcId: !Ref CloudSynergyVPC
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
@@ -130,20 +120,20 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !Ref InstanceType
-      KeyName: !Ref KeyPairName
       SubnetId: !Ref PublicSubnet
       SecurityGroupIds:
         - !Ref WebSecurityGroup
-      ImageId: ami-0f5ee92e2d63afc18   # Ubuntu 22.04 (ap-south-1)
+
+      # Dynamic AMI (Ubuntu 22.04)
+      ImageId: !Sub "{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}"
+
       Tags:
         - Key: Name
-          Value: CloudSynergy-EC2
+          Value: CloudSynergy-SynergyCRM-EC2
 
 Outputs:
   VPCId:
-    Description: CloudSynergy VPC ID
     Value: !Ref CloudSynergyVPC
 
   EC2PublicIP:
-    Description: Public IP of EC2 Instance
     Value: !GetAtt CloudSynergyEC2.PublicIp
